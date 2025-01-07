@@ -1,0 +1,42 @@
+name: Build OVMF with AMD SEV support
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential uuid-dev iasl nasm gcc
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Create placeholder EFI file
+        run: |
+          touch OvmfPkg/AmdSev/Grub/grub.efi
+
+      - name: Setup EDK2 build environment
+        run: |
+          make -C BaseTools
+
+      - name: Build OVMF
+        run: |
+          . ./edksetup.sh --reconfig
+          build -q --cmd-len=64436 -DDEBUG_ON_SERIAL_PORT=TRUE -n 32 -t GCC5 -a X64 -p OvmfPkg/AmdSev/AmdSevX64.dsc
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd
