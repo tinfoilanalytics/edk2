@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - name: Install dependencies
@@ -35,8 +37,28 @@ jobs:
           . ./edksetup.sh --reconfig
           build -q --cmd-len=64436 -DDEBUG_ON_SERIAL_PORT=TRUE -n 32 -t GCC5 -a X64 -p OvmfPkg/AmdSev/AmdSevX64.dsc
 
+      - name: Attest
+        uses: actions/attest@v1
+        id: attest
+        with:
+          subject-path: Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd
+          predicate-type: https://tinfoil.sh/predicate/component-artifact/v1
+          predicate: '{}'
+
+      - name: Generate release notes
+        id: generate-release-notes
+        run: |
+          RELEASE_NOTES=$(cat << EOF
+          Log: https://search.sigstore.dev?logIndex=$(jq -r ".verificationMaterial.tlogEntries[0].logIndex" ${{ steps.attest.outputs.bundle-path }})
+          EOF
+          )
+          echo "release-notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${RELEASE_NOTES}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             Build/AmdSev/DEBUG_GCC5/FV/OVMF.fd
+          body: ${{ steps.generate-release-notes.outputs.release-notes }}
